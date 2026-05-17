@@ -60,8 +60,12 @@ export function defaultArtifactPath(root: string, target: string): string {
       return aopsPath(root, "manifest.json");
     case "workspace":
       return aopsPath(root, "workspace-inspection.json");
+    case "repository":
+      return aopsPath(root, "repository-inspection.json");
     case "plan":
       return aopsPath(root, "plan.json");
+    case "docs":
+      return aopsPath(root, "docs", "docs-index.json");
     case "handoff":
       return aopsPath(root, "handoff", "handoff.json");
     default:

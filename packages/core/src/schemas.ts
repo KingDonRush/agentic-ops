@@ -142,6 +142,7 @@ export const TaskSchema = z.object({
   inputs_required: z.array(z.string()).default([]),
   expected_outputs: z.array(z.string()).default([]),
   acceptance_criteria: z.array(z.string()).default([]),
+  verification: z.array(z.string()).default([]),
   budgets: BudgetSchema.default({}),
   risks: z.array(z.string()).default([]),
   research_required: z.boolean().default(false),
@@ -170,6 +171,124 @@ export const PhaseSchema = z.object({
   validation_required: z.array(z.string()).default([]),
 });
 
+export const DecisionSchema = z.object({
+  id: z.string(),
+  title: z.string().min(1),
+  summary: z.string().default(""),
+  rationale: z.string().default(""),
+  status: z.enum(["proposed", "accepted", "superseded", "rejected"]).default("proposed"),
+  affects: z.array(z.string()).default([]),
+  alternatives_considered: z.array(z.string()).default([]),
+  evidence: z.array(z.string()).default([]),
+  risks: z.array(z.string()).default([]),
+  created_at: z.string().default(() => new Date().toISOString()),
+});
+
+export const AdapterSchema = z.object({
+  id: z.string(),
+  title: z.string().min(1),
+  type: z.enum(["repository", "ci", "documentation", "external_tool", "runtime", "mcp", "cli"]),
+  status: z.enum(["draft", "active", "degraded", "disabled"]).default("draft"),
+  purpose: z.string().default(""),
+  target: z.string().default(""),
+  capabilities: z.array(z.string()).default([]),
+  commands: z.array(z.string()).default([]),
+  scope_boundary: z.string().default(""),
+  safety_notes: z.array(z.string()).default([]),
+  configuration: z.record(z.unknown()).default({}),
+  created_at: z.string().default(() => new Date().toISOString()),
+});
+
+export const RepositoryInspectionSchema = z.object({
+  root: z.string(),
+  is_git_repo: z.boolean(),
+  branch: z.string().default(""),
+  remotes: z.array(z.object({
+    name: z.string(),
+    url: z.string(),
+  })).default([]),
+  latest_commit: z.string().default(""),
+  dirty: z.boolean().default(false),
+  changed_files: z.array(z.string()).default([]),
+  ci_detected: z.array(z.string()).default([]),
+  package_scripts: z.array(z.string()).default([]),
+  notes: z.array(z.string()).default([]),
+});
+
+export const DriftEventSchema = z.object({
+  id: z.string(),
+  type: z.enum([
+    "scope_drift",
+    "missing_contract",
+    "stale_artifact",
+    "unbounded_subplan",
+    "unvalidated_decision",
+    "missing_test",
+    "research_gap",
+  ]),
+  location: z.string().default(""),
+  impact: z.string().default(""),
+  correction: z.string().default(""),
+  requires_human_validation: z.boolean().default(false),
+});
+
+export const DriftReportSchema = z.object({
+  id: z.string(),
+  target: z.string().default("plan"),
+  created_at: z.string().default(() => new Date().toISOString()),
+  drift_score: z.number().min(0).max(100).default(0),
+  status: z.enum(["clear", "watch", "drift_detected"]).default("clear"),
+  events: z.array(DriftEventSchema).default([]),
+  recommendations: z.array(z.string()).default([]),
+});
+
+export const ReadinessCheckSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.enum(["pass", "warn", "fail", "not_applicable"]),
+  weight: z.number().min(0).max(100).default(1),
+  score: z.number().min(0).max(100).default(0),
+  notes: z.array(z.string()).default([]),
+});
+
+export const ReadinessReportSchema = z.object({
+  id: z.string(),
+  target: z.string().default("plan"),
+  created_at: z.string().default(() => new Date().toISOString()),
+  score: z.number().min(0).max(100).default(0),
+  status: z.enum(["not_ready", "partial", "ready", "blocked"]).default("not_ready"),
+  checks: z.array(ReadinessCheckSchema).default([]),
+  blockers: z.array(z.string()).default([]),
+  recommendations: z.array(z.string()).default([]),
+});
+
+export const PatchSuggestionSchema = z.object({
+  id: z.string(),
+  title: z.string().min(1),
+  target_file: z.string().default(""),
+  patch_type: z.enum(["agents_instruction", "documentation", "configuration", "code", "other"]).default("other"),
+  status: z.enum(["draft", "proposed", "accepted", "rejected"]).default("draft"),
+  purpose: z.string().default(""),
+  suggested_diff: z.string().default(""),
+  instructions: z.array(z.string()).default([]),
+  safety_notes: z.array(z.string()).default([]),
+  created_at: z.string().default(() => new Date().toISOString()),
+});
+
+export const DocsIndexSchema = z.object({
+  id: z.string(),
+  root: z.string(),
+  generated_at: z.string().default(() => new Date().toISOString()),
+  documents: z.array(z.object({
+    path: z.string(),
+    kind: z.enum(["readme", "agents", "docs", "planning", "unknown"]).default("unknown"),
+    title: z.string().default(""),
+    notes: z.array(z.string()).default([]),
+  })).default([]),
+  gaps: z.array(z.string()).default([]),
+  recommendations: z.array(z.string()).default([]),
+});
+
 export const PlanSchema = z.object({
   id: z.string(),
   objective: z.string().min(1),
@@ -180,10 +299,12 @@ export const PlanSchema = z.object({
   phases: z.array(PhaseSchema).default([]),
   tasks: z.array(TaskSchema).default([]),
   research_packets: z.array(ResearchPacketSchema).default([]),
-  decisions: z.array(z.unknown()).default([]),
+  decisions: z.array(DecisionSchema).default([]),
   budgets: BudgetSchema.default({}),
   tests: z.array(TestSchema).default([]),
   analysis_reports: z.array(z.unknown()).default([]),
+  readiness_reports: z.array(ReadinessReportSchema).default([]),
+  drift_reports: z.array(DriftReportSchema).default([]),
   validation_results: z.array(z.unknown()).default([]),
   handoff: z.record(z.unknown()).default({}),
 });
@@ -248,5 +369,14 @@ export type Subtask = z.infer<typeof SubtaskSchema>;
 export type Subplan = z.infer<typeof SubplanSchema>;
 export type Test = z.infer<typeof TestSchema>;
 export type AnalysisReport = z.infer<typeof AnalysisReportSchema>;
+export type Decision = z.infer<typeof DecisionSchema>;
+export type Adapter = z.infer<typeof AdapterSchema>;
+export type RepositoryInspection = z.infer<typeof RepositoryInspectionSchema>;
+export type DriftEvent = z.infer<typeof DriftEventSchema>;
+export type DriftReport = z.infer<typeof DriftReportSchema>;
+export type ReadinessCheck = z.infer<typeof ReadinessCheckSchema>;
+export type ReadinessReport = z.infer<typeof ReadinessReportSchema>;
+export type PatchSuggestion = z.infer<typeof PatchSuggestionSchema>;
+export type DocsIndex = z.infer<typeof DocsIndexSchema>;
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type HandoffPacket = z.infer<typeof HandoffPacketSchema>;

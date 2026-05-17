@@ -1,5 +1,5 @@
 export const AOPS_DIR = ".agentic-ops";
-export const CURRENT_VERSION = "0.2.0";
+export const CURRENT_VERSION = "0.3.0";
 
 export const PROTECTED_FILES = [
   "AGENTS.md",
@@ -15,13 +15,19 @@ export const PROTECTED_FILES = [
 ];
 
 export const DEFAULT_DIRECTORIES = [
+  "adapters",
   "phases",
   "tasks",
   "subplans",
   "tests",
   "research",
   "analysis",
+  "decisions",
+  "docs",
   "handoff",
+  "patches",
+  "readiness",
+  "drift",
   "snapshots",
   "logs",
 ];

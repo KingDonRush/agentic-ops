@@ -9,14 +9,14 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { inspectWorkspace, validateArtifact } from "@agentic-ops/core";
+import { inspectRepository, inspectWorkspace, validateArtifact } from "@agentic-ops/core";
 import { resources, prompts } from "./content.js";
 import { runCli } from "./cli.js";
 
 const server = new Server(
   {
     name: "agentic-ops",
-    version: "0.2.0",
+    version: "0.3.0",
   },
   {
     capabilities: {
@@ -93,6 +93,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "inspect_workspace",
       description: "Inspect a workspace without mutating it.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cwd: { type: "string" },
+        },
+      },
+    },
+    {
+      name: "inspect_repository",
+      description: "Inspect Git remotes, branch state, CI signals, and package scripts without mutating the workspace.",
       inputSchema: {
         type: "object",
         properties: {
@@ -204,6 +214,102 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "validate_decision",
+      description: "Validate a decision JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["decision"],
+        properties: {
+          decision: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "validate_adapter",
+      description: "Validate an adapter contract JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["adapter"],
+        properties: {
+          adapter: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "validate_readiness",
+      description: "Validate a readiness report JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["readiness"],
+        properties: {
+          readiness: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "validate_drift",
+      description: "Validate a drift report JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["drift"],
+        properties: {
+          drift: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "validate_patch",
+      description: "Validate a patch suggestion JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["patch"],
+        properties: {
+          patch: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "validate_docs_index",
+      description: "Validate a docs index JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["docs_index"],
+        properties: {
+          docs_index: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "create_readiness_score",
+      description: "Create a readiness score through the allowlisted CLI.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cwd: { type: "string" },
+        },
+      },
+    },
+    {
+      name: "check_drift",
+      description: "Create a drift report through the allowlisted CLI.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cwd: { type: "string" },
+        },
+      },
+    },
+    {
+      name: "index_docs",
+      description: "Create a documentation index through the allowlisted CLI.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cwd: { type: "string" },
+        },
+      },
+    },
+    {
       name: "create_snapshot",
       description: "Create an operational snapshot through the allowlisted CLI.",
       inputSchema: {
@@ -233,6 +339,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "inspect_workspace": {
       const cwd = stringArg(args.cwd) ?? process.cwd();
       return textResponse(inspectWorkspace(cwd));
+    }
+    case "inspect_repository": {
+      const cwd = stringArg(args.cwd) ?? process.cwd();
+      return textResponse(inspectRepository(cwd));
     }
     case "suggest_non_destructive_init": {
       const cwd = stringArg(args.cwd) ?? process.cwd();
@@ -278,6 +388,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     case "validate_handoff": {
       return textResponse(validateArtifact("handoff", args.handoff));
+    }
+    case "validate_decision": {
+      return textResponse(validateArtifact("decision", args.decision));
+    }
+    case "validate_adapter": {
+      return textResponse(validateArtifact("adapter", args.adapter));
+    }
+    case "validate_readiness": {
+      return textResponse(validateArtifact("readiness", args.readiness));
+    }
+    case "validate_drift": {
+      return textResponse(validateArtifact("drift", args.drift));
+    }
+    case "validate_patch": {
+      return textResponse(validateArtifact("patch", args.patch));
+    }
+    case "validate_docs_index": {
+      return textResponse(validateArtifact("docs", args.docs_index));
+    }
+    case "create_readiness_score": {
+      const cwd = stringArg(args.cwd);
+      return textResponse(await runCli(["readiness", "score"], cwd));
+    }
+    case "check_drift": {
+      const cwd = stringArg(args.cwd);
+      return textResponse(await runCli(["drift", "check"], cwd));
+    }
+    case "index_docs": {
+      const cwd = stringArg(args.cwd);
+      return textResponse(await runCli(["docs", "index"], cwd));
     }
     case "create_snapshot": {
       const cwd = stringArg(args.cwd);

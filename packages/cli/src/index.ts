@@ -1,21 +1,31 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { Command } from "commander";
 import {
+  createAdapter,
   createAnalysisReport,
+  createDecision,
+  createDocsIndex,
+  createDriftReport,
   createHandoffPacket,
   createManifest,
+  createPatchSuggestion,
   createPhase,
   createPlan,
+  createReadinessReport,
   createResearchPacket,
   createSubplan,
   createSubtask,
   createTask,
   createTest,
   getPreset,
+  inspectRepository,
   inspectWorkspace,
+  type Adapter,
   type AnalysisReport,
+  type Decision,
+  type PatchSuggestion,
   type Phase,
   type Plan,
   type PresetId,
@@ -49,7 +59,7 @@ const program = new Command();
 program
   .name("aops")
   .description("Agentic Ops CLI")
-  .version("0.2.0")
+  .version("0.3.0")
   .option("--cwd <path>", "workspace directory", process.cwd())
   .option("--json", "print JSON output");
 
@@ -75,6 +85,51 @@ program
       `agentic files: ${inspection.agentic_files.join(", ") || "none"}`,
       `recommended mode: ${inspection.recommended_mode}`,
     ]);
+  });
+
+const repo = program.command("repo").description("Repository operations");
+
+repo
+  .command("inspect")
+  .description("Inspect Git remotes, branch state, CI signals, and package scripts")
+  .option("--write", "write inspection to .agentic-ops/repository-inspection.json")
+  .action((options) => {
+    const root = rootCwd();
+    const inspection = inspectRepository(root);
+    if (options.write) {
+      ensureAopsTree(root);
+      writeJsonFile(defaultArtifactPath(root, "repository"), inspection, { force: true });
+    }
+    printJson({
+      status: options.write ? "written" : "inspected",
+      output: options.write ? defaultArtifactPath(root, "repository") : undefined,
+      validation: validateArtifact("repository", inspection),
+      repository: inspection,
+    });
+  });
+
+const ci = program.command("ci").description("CI operations");
+
+ci
+  .command("inspect")
+  .description("Inspect CI signals without creating or changing CI config")
+  .option("--write", "write repository inspection with CI signals")
+  .action((options) => {
+    const root = rootCwd();
+    const inspection = inspectRepository(root);
+    if (options.write) {
+      ensureAopsTree(root);
+      writeJsonFile(defaultArtifactPath(root, "repository"), inspection, { force: true });
+    }
+    printJson({
+      status: options.write ? "written" : "inspected",
+      ci_detected: inspection.ci_detected,
+      package_scripts: inspection.package_scripts,
+      recommendations: inspection.ci_detected.length
+        ? ["Use existing CI signals before adding new automation."]
+        : ["No CI signals detected; consider adding a verify script before remote CI integration."],
+      repository: inspection,
+    });
   });
 
 program
@@ -251,6 +306,45 @@ task
       }
     }
     printJson({ status: options.dryRun ? "dry_run" : "created", output, validation: validateArtifact("task", taskData), task: taskData });
+  });
+
+task
+  .command("start")
+  .description("Mark a task as in_progress")
+  .requiredOption("--task-id <id>", "task id")
+  .option("--dry-run", "print without writing")
+  .action((options) => {
+    const root = rootCwd();
+    const planData = requirePlan(root);
+    const taskData = requireTask(root, planData, options.taskId);
+    taskData.status = "in_progress";
+    if (!options.dryRun) {
+      saveTaskAndPlan(root, planData, taskData);
+    }
+    printJson({ status: options.dryRun ? "dry_run" : "updated", validation: validateArtifact("task", taskData), task: taskData });
+  });
+
+task
+  .command("complete")
+  .description("Mark a task as done and attach optional verification notes")
+  .requiredOption("--task-id <id>", "task id")
+  .option("--verification <items>", "comma-separated verification evidence")
+  .option("--dry-run", "print without writing")
+  .action((options) => {
+    const root = rootCwd();
+    const planData = requirePlan(root);
+    const taskData = requireTask(root, planData, options.taskId);
+    taskData.status = "done";
+    taskData.verification ??= [];
+    for (const note of splitList(options.verification)) {
+      if (!taskData.verification.includes(note)) {
+        taskData.verification.push(note);
+      }
+    }
+    if (!options.dryRun) {
+      saveTaskAndPlan(root, planData, taskData);
+    }
+    printJson({ status: options.dryRun ? "dry_run" : "updated", validation: validateArtifact("task", taskData), task: taskData });
   });
 
 const subtask = program.command("subtask").description("Subtask operations");
@@ -513,6 +607,198 @@ research
     printJson({ status: options.dryRun ? "dry_run" : "created", output, validation, research_packet: packet });
   });
 
+const decision = program.command("decision").description("Decision history operations");
+
+decision
+  .command("record")
+  .description("Record a decision without treating it as code execution")
+  .requiredOption("--title <text>", "decision title")
+  .option("--summary <text>", "decision summary")
+  .option("--rationale <text>", "decision rationale")
+  .option("--status <status>", "proposed | accepted | superseded | rejected")
+  .option("--affects <items>", "comma-separated affected artifacts")
+  .option("--alternatives <items>", "comma-separated alternatives considered")
+  .option("--evidence <items>", "comma-separated evidence references")
+  .option("--risks <items>", "comma-separated risks")
+  .option("--id <id>", "decision id")
+  .option("--dry-run", "print without writing")
+  .option("--force", "overwrite existing decision artifact")
+  .action((options) => {
+    const root = rootCwd();
+    ensureAopsTree(root, Boolean(options.dryRun));
+    const planData = loadPlan(root);
+    const decisionData = createDecision({
+      id: options.id ?? nextSequentialId(root, "decisions", "DECISION", planData?.decisions.map((item) => item.id)),
+      title: options.title,
+      summary: options.summary,
+      rationale: options.rationale,
+      status: parseChoice(options.status, ["proposed", "accepted", "superseded", "rejected"]),
+      affects: splitList(options.affects),
+      alternativesConsidered: splitList(options.alternatives),
+      evidence: splitList(options.evidence),
+      risks: splitList(options.risks),
+    });
+    const output = artifactPath(root, "decisions", decisionData.id);
+    if (!options.dryRun) {
+      writeJsonFile(output, decisionData, { force: Boolean(options.force) });
+      if (planData) {
+        upsertById(planData.decisions, decisionData);
+        savePlan(root, planData);
+      }
+    }
+    printJson({ status: options.dryRun ? "dry_run" : "created", output, validation: validateArtifact("decision", decisionData), decision: decisionData });
+  });
+
+const adapter = program.command("adapter").description("Adapter contract operations");
+
+adapter
+  .command("create")
+  .description("Create a declarative adapter contract for an external surface")
+  .requiredOption("--title <text>", "adapter title")
+  .requiredOption("--type <type>", "repository | ci | documentation | external_tool | runtime | mcp | cli")
+  .option("--id <id>", "adapter id")
+  .option("--status <status>", "draft | active | degraded | disabled")
+  .option("--purpose <text>", "adapter purpose")
+  .option("--target <text>", "adapter target")
+  .option("--capabilities <items>", "comma-separated capabilities")
+  .option("--commands <items>", "comma-separated commands")
+  .option("--scope-boundary <text>", "scope boundary")
+  .option("--safety-notes <items>", "comma-separated safety notes")
+  .option("--dry-run", "print without writing")
+  .option("--force", "overwrite existing adapter artifact")
+  .action((options) => {
+    const root = rootCwd();
+    ensureAopsTree(root, Boolean(options.dryRun));
+    const adapterData = createAdapter({
+      id: options.id ?? nextSequentialId(root, "adapters", "ADAPTER"),
+      title: options.title,
+      type: parseRequiredChoice(options.type, ["repository", "ci", "documentation", "external_tool", "runtime", "mcp", "cli"]),
+      status: parseChoice(options.status, ["draft", "active", "degraded", "disabled"]),
+      purpose: options.purpose,
+      target: options.target,
+      capabilities: splitList(options.capabilities),
+      commands: splitList(options.commands),
+      scopeBoundary: options.scopeBoundary,
+      safetyNotes: splitList(options.safetyNotes),
+    });
+    const output = artifactPath(root, "adapters", adapterData.id);
+    if (!options.dryRun) {
+      writeJsonFile(output, adapterData, { force: Boolean(options.force) });
+    }
+    printJson({ status: options.dryRun ? "dry_run" : "created", output, validation: validateArtifact("adapter", adapterData), adapter: adapterData });
+  });
+
+const readiness = program.command("readiness").description("Readiness scoring operations");
+
+readiness
+  .command("score")
+  .description("Create a readiness score from the current operational plan")
+  .option("--target <target>", "report target", "plan")
+  .option("--dry-run", "print without writing")
+  .option("--force", "overwrite existing readiness artifact")
+  .action((options) => {
+    const root = rootCwd();
+    ensureAopsTree(root, Boolean(options.dryRun));
+    const planData = loadPlan(root);
+    const report = createReadinessReport({
+      id: `READINESS-${Date.now()}`,
+      plan: planData,
+      target: options.target,
+    });
+    const output = artifactPath(root, "readiness", report.id);
+    if (!options.dryRun) {
+      writeJsonFile(output, report, { force: Boolean(options.force) });
+      if (planData) {
+        planData.readiness_reports.push(report);
+        savePlan(root, planData);
+      }
+    }
+    printJson({ status: options.dryRun ? "dry_run" : "created", output, validation: validateArtifact("readiness", report), readiness: report });
+  });
+
+const drift = program.command("drift").description("Drift detection operations");
+
+drift
+  .command("check")
+  .description("Create a drift report from the current operational plan")
+  .option("--target <target>", "report target", "plan")
+  .option("--dry-run", "print without writing")
+  .option("--force", "overwrite existing drift artifact")
+  .action((options) => {
+    const root = rootCwd();
+    ensureAopsTree(root, Boolean(options.dryRun));
+    const planData = loadPlan(root);
+    const report = createDriftReport({
+      id: `DRIFT-${Date.now()}`,
+      plan: planData,
+      target: options.target,
+    });
+    const output = artifactPath(root, "drift", report.id);
+    if (!options.dryRun) {
+      writeJsonFile(output, report, { force: Boolean(options.force) });
+      if (planData) {
+        planData.drift_reports.push(report);
+        savePlan(root, planData);
+      }
+    }
+    printJson({ status: options.dryRun ? "dry_run" : "created", output, validation: validateArtifact("drift", report), drift: report });
+  });
+
+const docs = program.command("docs").description("Documentation integration operations");
+
+docs
+  .command("index")
+  .description("Create a lightweight index of existing project documentation")
+  .option("--dry-run", "print without writing")
+  .option("--force", "overwrite docs index artifact")
+  .action((options) => {
+    const root = rootCwd();
+    ensureAopsTree(root, Boolean(options.dryRun));
+    const index = createDocsIndex({
+      id: `DOCS-${Date.now()}`,
+      root,
+      documents: collectDocumentEntries(root),
+      gaps: docsGaps(root),
+      recommendations: ["Use this index as input for handoff and onboarding before opening broad repository context."],
+    });
+    const output = defaultArtifactPath(root, "docs");
+    if (!options.dryRun) {
+      writeJsonFile(output, index, { force: Boolean(options.force) || true });
+    }
+    printJson({ status: options.dryRun ? "dry_run" : "created", output, validation: validateArtifact("docs", index), docs_index: index });
+  });
+
+const patch = program.command("patch").description("Optional patch suggestion operations");
+
+patch
+  .command("suggest")
+  .description("Create a patch suggestion artifact; never applies it")
+  .requiredOption("--title <text>", "patch title")
+  .option("--target-file <path>", "target file")
+  .option("--type <type>", "agents_instruction | documentation | configuration | code | other")
+  .option("--purpose <text>", "patch purpose")
+  .option("--instructions <items>", "comma-separated implementation instructions")
+  .option("--id <id>", "patch id")
+  .option("--dry-run", "print without writing")
+  .option("--force", "overwrite existing patch artifact")
+  .action((options) => {
+    const root = rootCwd();
+    ensureAopsTree(root, Boolean(options.dryRun));
+    const patchData = createPatchSuggestion({
+      id: options.id ?? nextSequentialId(root, "patches", "PATCH"),
+      title: options.title,
+      targetFile: options.targetFile,
+      patchType: parseChoice(options.type, ["agents_instruction", "documentation", "configuration", "code", "other"]),
+      purpose: options.purpose,
+      instructions: splitList(options.instructions),
+    });
+    const output = artifactPath(root, "patches", patchData.id);
+    if (!options.dryRun) {
+      writeJsonFile(output, patchData, { force: Boolean(options.force) });
+    }
+    printJson({ status: options.dryRun ? "dry_run" : "created", output, validation: validateArtifact("patch", patchData), patch: patchData });
+  });
+
 program.parseAsync().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
   process.stderr.write(`aops error: ${message}\n`);
@@ -549,7 +835,26 @@ function parseRequiredChoice<T extends string>(value: string | undefined, choice
 }
 
 function parseValidationTarget(value: string): ValidationTarget {
-  const targets: ValidationTarget[] = ["workspace", "manifest", "plan", "phase", "task", "subtask", "subplan", "research", "test", "analysis", "handoff"];
+  const targets: ValidationTarget[] = [
+    "workspace",
+    "manifest",
+    "plan",
+    "phase",
+    "task",
+    "subtask",
+    "subplan",
+    "research",
+    "test",
+    "analysis",
+    "handoff",
+    "decision",
+    "adapter",
+    "repository",
+    "readiness",
+    "drift",
+    "patch",
+    "docs",
+  ];
   if (!targets.includes(value as ValidationTarget)) {
     throw new Error(`Unknown validation target: ${value}`);
   }
@@ -558,7 +863,7 @@ function parseValidationTarget(value: string): ValidationTarget {
 
 function resolveDefaultOrProvided(root: string, target: ValidationTarget, file?: string): string {
   if (file) return resolveCwd(file);
-  if (target === "task" || target === "phase" || target === "subtask" || target === "subplan" || target === "research" || target === "test" || target === "analysis") {
+  if (target === "task" || target === "phase" || target === "subtask" || target === "subplan" || target === "research" || target === "test" || target === "analysis" || target === "decision" || target === "adapter" || target === "readiness" || target === "drift" || target === "patch") {
     throw new Error(`--file is required when validating ${target}`);
   }
   const path = defaultArtifactPath(root, target);
@@ -567,7 +872,8 @@ function resolveDefaultOrProvided(root: string, target: ValidationTarget, file?:
 }
 
 function loadPlan(root: string): Plan | undefined {
-  return readJsonFileIfExists(defaultArtifactPath(root, "plan")) as Plan | undefined;
+  const planData = readJsonFileIfExists(defaultArtifactPath(root, "plan")) as Plan | undefined;
+  return planData ? normalizePlan(planData) : undefined;
 }
 
 function requirePlan(root: string): Plan {
@@ -579,7 +885,20 @@ function requirePlan(root: string): Plan {
 }
 
 function savePlan(root: string, planData: Plan): void {
-  writeJsonFile(defaultArtifactPath(root, "plan"), planData, { force: true });
+  writeJsonFile(defaultArtifactPath(root, "plan"), normalizePlan(planData), { force: true });
+}
+
+function normalizePlan(planData: Plan): Plan {
+  planData.decisions ??= [];
+  planData.analysis_reports ??= [];
+  planData.readiness_reports ??= [];
+  planData.drift_reports ??= [];
+  planData.validation_results ??= [];
+  planData.handoff ??= {};
+  for (const taskData of planData.tasks ?? []) {
+    taskData.verification ??= [];
+  }
+  return planData;
 }
 
 function requireTask(root: string, planData: Plan, taskId: string): Task {
@@ -682,4 +1001,82 @@ function diffSnapshots(from: Snapshot, to: Snapshot) {
   const removed = [...fromMap.keys()].filter((path) => !toMap.has(path));
   const changed = [...toMap.keys()].filter((path) => fromMap.has(path) && fromMap.get(path) !== toMap.get(path));
   return { from: from.id, to: to.id, added, removed, changed };
+}
+
+function collectDocumentEntries(root: string) {
+  return collectCandidateDocuments(root)
+    .map((file) => {
+      const rel = relative(root, file);
+      return {
+        path: rel,
+        kind: inferDocumentKind(rel),
+        title: readTitle(file),
+        notes: [],
+      };
+    })
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function collectCandidateDocuments(root: string): string[] {
+  const ignored = new Set([".git", "node_modules", "dist", "coverage", ".agentic-ops"]);
+  const found: string[] = [];
+
+  function walk(dir: string, depth: number): void {
+    if (depth > 4 || !existsSync(dir)) return;
+    for (const entry of readdirSync(dir)) {
+      if (ignored.has(entry)) continue;
+      const path = join(dir, entry);
+      const stats = statSync(path);
+      if (stats.isDirectory()) {
+        walk(path, depth + 1);
+        continue;
+      }
+      if (isDocCandidate(path)) {
+        found.push(path);
+      }
+    }
+  }
+
+  walk(root, 0);
+  return found;
+}
+
+function isDocCandidate(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".mdx") || lower.endsWith(".txt");
+}
+
+function inferDocumentKind(path: string): "readme" | "agents" | "docs" | "planning" | "unknown" {
+  const lower = path.toLowerCase();
+  if (lower.endsWith("readme.md")) return "readme";
+  if (lower.endsWith("agents.md") || lower.endsWith("claude.md") || lower.endsWith("gemini.md")) return "agents";
+  if (lower.startsWith("docs/")) return "docs";
+  if (lower.includes("plan") || lower.includes("roadmap") || lower.includes("strategy")) return "planning";
+  return "unknown";
+}
+
+function readTitle(path: string): string {
+  try {
+    const firstHeading = readFileSync(path, "utf8")
+      .split("\n")
+      .find((line) => line.startsWith("# "));
+    return firstHeading ? firstHeading.replace(/^#\s+/, "").trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+function docsGaps(root: string): string[] {
+  const docs = collectCandidateDocuments(root).map((file) => relative(root, file).toLowerCase());
+  const gaps: string[] = [];
+  if (!docs.some((file) => file.endsWith("readme.md"))) {
+    gaps.push("No README.md detected.");
+  }
+  if (!docs.some((file) => file.endsWith("agents.md"))) {
+    gaps.push("No AGENTS.md detected.");
+  }
+  if (!docs.some((file) => file.startsWith("docs/"))) {
+    gaps.push("No docs/ markdown files detected.");
+  }
+  return gaps;
 }

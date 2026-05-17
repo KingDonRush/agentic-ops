@@ -1,7 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { AOPS_DIR, PROTECTED_FILES } from "./constants.js";
-import { type WorkspaceInspection } from "./schemas.js";
+import { type RepositoryInspection, type WorkspaceInspection } from "./schemas.js";
 
 const agenticFileNames = [
   "AGENTS.md",
@@ -35,6 +36,28 @@ export function inspectWorkspace(root: string): WorkspaceInspection {
     notes: agenticFiles.length
       ? ["Existing agentic instructions detected. Use non-destructive overlay mode."]
       : ["No common agentic instruction file detected."],
+  };
+}
+
+export function inspectRepository(root: string): RepositoryInspection {
+  const isGitRepo = existsSync(join(root, ".git")) || git(root, ["rev-parse", "--is-inside-work-tree"]) === "true";
+  const statusLines = isGitRepo ? git(root, ["status", "--short"]).split("\n").filter(Boolean) : [];
+  const packageScripts = readPackageScripts(root);
+
+  return {
+    root,
+    is_git_repo: isGitRepo,
+    branch: isGitRepo ? git(root, ["rev-parse", "--abbrev-ref", "HEAD"]) : "",
+    remotes: isGitRepo ? readGitRemotes(root) : [],
+    latest_commit: isGitRepo ? git(root, ["rev-parse", "--short", "HEAD"]) : "",
+    dirty: statusLines.length > 0,
+    changed_files: statusLines.map((line) => line.slice(3).trim()).filter(Boolean),
+    ci_detected: detectCi(root, packageScripts),
+    package_scripts: packageScripts,
+    notes: [
+      isGitRepo ? "Git repository detected." : "No Git repository detected.",
+      statusLines.length ? "Workspace has uncommitted changes." : "No uncommitted changes detected by git status.",
+    ],
   };
 }
 
@@ -100,4 +123,51 @@ function directoryExists(path: string): boolean {
   } catch {
     return false;
   }
+}
+
+function git(root: string, args: string[]): string {
+  try {
+    return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+}
+
+function readGitRemotes(root: string): RepositoryInspection["remotes"] {
+  const lines = git(root, ["remote", "-v"]).split("\n").filter(Boolean);
+  const seen = new Set<string>();
+  const remotes: RepositoryInspection["remotes"] = [];
+
+  for (const line of lines) {
+    const match = line.match(/^(\S+)\s+(\S+)\s+\((fetch|push)\)$/);
+    if (!match || match[3] !== "fetch") continue;
+    const key = `${match[1]}:${match[2]}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    remotes.push({ name: match[1], url: match[2] });
+  }
+
+  return remotes;
+}
+
+function readPackageScripts(root: string): string[] {
+  const packageJson = join(root, "package.json");
+  if (!existsSync(packageJson)) return [];
+
+  try {
+    const pkg = JSON.parse(readFileSync(packageJson, "utf8"));
+    return Object.keys(pkg.scripts ?? {}).sort();
+  } catch {
+    return [];
+  }
+}
+
+function detectCi(root: string, packageScripts: string[]): string[] {
+  const ci = new Set<string>();
+  if (directoryExists(join(root, ".github", "workflows"))) ci.add("github_actions");
+  if (existsSync(join(root, ".gitlab-ci.yml"))) ci.add("gitlab_ci");
+  if (existsSync(join(root, ".circleci", "config.yml"))) ci.add("circleci");
+  if (existsSync(join(root, "azure-pipelines.yml"))) ci.add("azure_pipelines");
+  if (packageScripts.some((script) => ["test", "verify", "lint", "build"].includes(script))) ci.add("package_scripts");
+  return [...ci];
 }

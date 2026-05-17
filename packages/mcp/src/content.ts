@@ -10,7 +10,7 @@ export const resources: Record<string, { name: string; text: string }> = {
       "",
       "Primary mantra: Como isso vai continuar funcionando depois que eu parar de explicar?",
       "",
-      "V1 flow: inspect workspace, suggest non-destructive init, choose preset, create briefing, create plan, create phases/tasks/subtasks/subplans/tests, create research packets, validate, analyze, snapshot/export, hand off.",
+      "V2 flow: inspect workspace and repo, suggest non-destructive init, choose preset, create briefing, create plan, create phases/tasks/subtasks/subplans/tests, create research packets, record decisions, create adapter contracts, score readiness, check drift, index docs, suggest optional patches, validate, analyze, snapshot/export, hand off.",
     ].join("\n"),
   },
   "agentic-ops://non-destructive-policy": {
@@ -47,22 +47,45 @@ export const resources: Record<string, { name: string; text: string }> = {
     text: [
       "V1 allowlist:",
       "- aops inspect",
+      "- aops repo inspect",
+      "- aops ci inspect",
       "- aops init --non-destructive",
       "- aops validate",
       "- aops plan create",
       "- aops research brief",
       "- aops phase create",
       "- aops task create",
+      "- aops task start",
+      "- aops task complete",
       "- aops subtask create",
       "- aops subplan create",
       "- aops test create",
       "- aops analyze",
+      "- aops decision record",
+      "- aops adapter create",
+      "- aops readiness score",
+      "- aops drift check",
+      "- aops docs index",
+      "- aops patch suggest",
       "- aops handoff create",
       "- aops snapshot create",
       "- aops diff",
       "- aops export",
       "",
       "The MCP must not pass --force unless a user explicitly approves it outside the tool.",
+    ].join("\n"),
+  },
+  "agentic-ops://v2-operational-layer": {
+    name: "V2 Operational Layer",
+    text: [
+      "V2 adds maturity checks around the V1 planning contract.",
+      "",
+      "Use decisions to preserve why something was chosen.",
+      "Use adapters to describe integration surfaces before implementing them.",
+      "Use readiness score before execution or handoff.",
+      "Use drift check when the plan may have grown beyond its contract.",
+      "Use docs index to give agents a bounded map of repository documentation.",
+      "Use patch suggestions for optional changes to AGENTS.md, docs, config, or code; do not apply them automatically.",
     ].join("\n"),
   },
 };
@@ -118,6 +141,37 @@ export const prompts: Record<string, { description: string; text: string }> = {
     text: [
       "Create a test with type, target, objective, preconditions, steps, expected result, pass criteria, evidence required, severity, dependencies, and subtests if needed.",
       "Tests can target plan, phase, task, subtask, subplan, integration, UI, API, research, or handoff.",
+    ].join("\n"),
+  },
+  record_decision: {
+    description: "Record a decision with rationale and evidence.",
+    text: [
+      "Create a decision record only after the decision is clear enough to affect execution.",
+      "Include title, status, summary, rationale, affected artifacts, alternatives considered, evidence, and risks.",
+      "Do not treat a proposed decision as accepted unless evidence or human validation supports it.",
+    ].join("\n"),
+  },
+  create_adapter_contract: {
+    description: "Create a bounded adapter contract before deep integration work.",
+    text: [
+      "Create an adapter contract for repository, CI, documentation, external tool, runtime, MCP, or CLI integration.",
+      "Declare purpose, target, capabilities, commands, scope boundary, and safety notes.",
+      "The adapter is a contract, not runtime integration, until a task explicitly implements it.",
+    ].join("\n"),
+  },
+  score_readiness: {
+    description: "Score whether the operational plan is ready to execute or hand off.",
+    text: [
+      "Run readiness scoring before execution, handoff, or major continuation.",
+      "Treat blockers as stop signs. Treat warnings as refinement work unless the user accepts the risk.",
+      "Use the report to decide whether to create tasks, tests, research packets, decisions, or handoff updates.",
+    ].join("\n"),
+  },
+  check_drift: {
+    description: "Detect drift between intention, plan, tasks, research, and validation.",
+    text: [
+      "Run drift checks when scope feels unstable, tasks are becoming generic, or another agent is taking over.",
+      "For each event, decide whether to correct the plan, create a decision, create a research packet, split a task, or ask for validation.",
     ].join("\n"),
   },
 };

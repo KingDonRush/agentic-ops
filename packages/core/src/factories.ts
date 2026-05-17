@@ -1,11 +1,19 @@
 import { CURRENT_VERSION } from "./constants.js";
 import { type PresetId } from "./presets.js";
 import {
+  type Adapter,
   type AnalysisReport,
+  type Decision,
+  type DriftEvent,
+  type DriftReport,
+  type DocsIndex,
   type HandoffPacket,
   type Manifest,
+  type PatchSuggestion,
   type Phase,
   type Plan,
+  type ReadinessCheck,
+  type ReadinessReport,
   type ResearchPacket,
   type Subplan,
   type Subtask,
@@ -73,6 +81,7 @@ export function createTask001(preset: PresetId, objective: string): Task {
       "Scope and out-of-scope are recorded.",
       "Continuity criteria are clear enough for another AI.",
     ],
+    verification: [],
     budgets: {
       time_budget: "one planning pass",
       complexity_budget: "moderate",
@@ -144,6 +153,7 @@ export function createTask(input: {
     inputs_required: input.inputsRequired ?? [],
     expected_outputs: input.expectedOutputs ?? [],
     acceptance_criteria: input.acceptanceCriteria ?? [],
+    verification: [],
     budgets: emptyBudget(),
     risks: input.risks ?? [],
     research_required: input.researchRequired ?? false,
@@ -300,6 +310,8 @@ export function createPlan(input: {
     },
     tests: [],
     analysis_reports: [],
+    readiness_reports: [],
+    drift_reports: [],
     validation_results: [],
     handoff: {},
   };
@@ -361,5 +373,218 @@ export function createHandoffPacket(input: {
     how_to_continue_briefing_user: "Brief using current objective, preset, scope boundaries, open risks, and next validation gate.",
     first_recommended_cli_command: "aops validate plan",
     first_recommended_mcp_prompt: "create_handoff",
+  };
+}
+
+export function createDecision(input: {
+  id: string;
+  title: string;
+  summary?: string;
+  rationale?: string;
+  status?: Decision["status"];
+  affects?: string[];
+  alternativesConsidered?: string[];
+  evidence?: string[];
+  risks?: string[];
+}): Decision {
+  return {
+    id: input.id,
+    title: input.title,
+    summary: input.summary ?? "",
+    rationale: input.rationale ?? "",
+    status: input.status ?? "proposed",
+    affects: input.affects ?? [],
+    alternatives_considered: input.alternativesConsidered ?? [],
+    evidence: input.evidence ?? [],
+    risks: input.risks ?? [],
+    created_at: new Date().toISOString(),
+  };
+}
+
+export function createAdapter(input: {
+  id: string;
+  title: string;
+  type: Adapter["type"];
+  status?: Adapter["status"];
+  purpose?: string;
+  target?: string;
+  capabilities?: string[];
+  commands?: string[];
+  scopeBoundary?: string;
+  safetyNotes?: string[];
+  configuration?: Record<string, unknown>;
+}): Adapter {
+  return {
+    id: input.id,
+    title: input.title,
+    type: input.type,
+    status: input.status ?? "draft",
+    purpose: input.purpose ?? "",
+    target: input.target ?? "",
+    capabilities: input.capabilities ?? [],
+    commands: input.commands ?? [],
+    scope_boundary: input.scopeBoundary ?? "",
+    safety_notes: input.safetyNotes ?? ["Adapter is declarative until runtime integration is explicitly implemented."],
+    configuration: input.configuration ?? {},
+    created_at: new Date().toISOString(),
+  };
+}
+
+export function createReadinessReport(input: {
+  id: string;
+  plan?: Plan;
+  target?: string;
+}): ReadinessReport {
+  const checks = input.plan ? readinessChecks(input.plan) : [
+    check("READINESS-plan", "Plan exists", "fail", 20, ["No plan was provided."]),
+  ];
+  const totalWeight = checks.reduce((total, checkItem) => total + checkItem.weight, 0) || 1;
+  const score = Math.round(checks.reduce((total, checkItem) => total + (checkItem.score * checkItem.weight), 0) / totalWeight);
+  const blockers = checks.filter((checkItem) => checkItem.status === "fail").map((checkItem) => checkItem.title);
+
+  return {
+    id: input.id,
+    target: input.target ?? "plan",
+    created_at: new Date().toISOString(),
+    score,
+    status: blockers.length ? "blocked" : score >= 85 ? "ready" : score >= 55 ? "partial" : "not_ready",
+    checks,
+    blockers,
+    recommendations: checks
+      .filter((checkItem) => checkItem.status !== "pass" && checkItem.status !== "not_applicable")
+      .flatMap((checkItem) => checkItem.notes),
+  };
+}
+
+export function createDriftReport(input: {
+  id: string;
+  plan?: Plan;
+  target?: string;
+}): DriftReport {
+  const events = input.plan ? driftEvents(input.plan) : [
+    driftEvent("DRIFT-plan", "missing_contract", "plan", "No plan exists.", "Create or import a plan before checking drift.", true),
+  ];
+  const driftScore = Math.min(100, events.reduce((total, event) => total + (event.requires_human_validation ? 20 : 12), 0));
+
+  return {
+    id: input.id,
+    target: input.target ?? "plan",
+    created_at: new Date().toISOString(),
+    drift_score: driftScore,
+    status: driftScore === 0 ? "clear" : driftScore >= 40 ? "drift_detected" : "watch",
+    events,
+    recommendations: events.map((event) => event.correction),
+  };
+}
+
+export function createPatchSuggestion(input: {
+  id: string;
+  title: string;
+  targetFile?: string;
+  patchType?: PatchSuggestion["patch_type"];
+  purpose?: string;
+  suggestedDiff?: string;
+  instructions?: string[];
+  safetyNotes?: string[];
+}): PatchSuggestion {
+  return {
+    id: input.id,
+    title: input.title,
+    target_file: input.targetFile ?? "",
+    patch_type: input.patchType ?? "other",
+    status: "draft",
+    purpose: input.purpose ?? "",
+    suggested_diff: input.suggestedDiff ?? "",
+    instructions: input.instructions ?? [],
+    safety_notes: input.safetyNotes ?? ["Patch suggestions are never applied automatically by Agentic Ops."],
+    created_at: new Date().toISOString(),
+  };
+}
+
+export function createDocsIndex(input: {
+  id: string;
+  root: string;
+  documents: DocsIndex["documents"];
+  gaps?: string[];
+  recommendations?: string[];
+}): DocsIndex {
+  return {
+    id: input.id,
+    root: input.root,
+    generated_at: new Date().toISOString(),
+    documents: input.documents,
+    gaps: input.gaps ?? [],
+    recommendations: input.recommendations ?? [],
+  };
+}
+
+function readinessChecks(plan: Plan): ReadinessCheck[] {
+  const checks: ReadinessCheck[] = [
+    check("READINESS-objective", "Objective is explicit", plan.objective ? "pass" : "fail", 15, ["Add a concrete objective."]),
+    check("READINESS-scope", "Scope boundaries exist", plan.scope.length && plan.out_of_scope.length ? "pass" : "fail", 15, ["Add scope and out-of-scope boundaries."]),
+    check("READINESS-anchor", "TASK-001 anchors continuity", plan.tasks.some((task) => task.id === "TASK-001") ? "pass" : "fail", 15, ["Create TASK-001 before execution."]),
+    check("READINESS-phases", "Phases define execution order", plan.phases.length > 0 ? "pass" : "warn", 10, ["Create phases with entry and exit conditions."]),
+    check("READINESS-tasks", "Tasks have acceptance criteria", plan.tasks.every((task) => task.acceptance_criteria.length > 0) ? "pass" : "warn", 15, ["Add acceptance criteria to every task."]),
+    check("READINESS-research", "Research requirements are represented", researchReady(plan) ? "pass" : "warn", 10, ["Create research packets for tasks marked research_required."]),
+    check("READINESS-tests", "Tests exist for validation", plan.tests.length || plan.tasks.some((task) => task.tests.length) ? "pass" : "warn", 10, ["Create tests or task-level tests before handoff."]),
+    check("READINESS-handoff", "Handoff path is present", Object.keys(plan.handoff).length ? "pass" : "warn", 10, ["Create a handoff packet before switching agents."]),
+  ];
+  return checks;
+}
+
+function driftEvents(plan: Plan): DriftEvent[] {
+  const events: DriftEvent[] = [];
+  if (!plan.scope.length || !plan.out_of_scope.length) {
+    events.push(driftEvent("DRIFT-scope", "missing_contract", "plan.scope", "Scope boundaries are incomplete.", "Record scope and out-of-scope before execution.", true));
+  }
+  for (const task of plan.tasks) {
+    if (!task.acceptance_criteria.length) {
+      events.push(driftEvent(`DRIFT-${task.id}-acceptance`, "missing_contract", task.id, "Task lacks acceptance criteria.", "Add observable acceptance criteria.", false));
+    }
+    if (task.complexity === "very_complex" && task.subplans.length === 0) {
+      events.push(driftEvent(`DRIFT-${task.id}-subplan`, "unbounded_subplan", task.id, "Very complex task has no bounded subplan.", "Promote the risky slice to a Matrioshka subplan.", true));
+    }
+    if (task.research_required && plan.research_packets.length === 0) {
+      events.push(driftEvent(`DRIFT-${task.id}-research`, "research_gap", task.id, "Task requires research but plan has no research packets.", "Create a research packet for the decision that depends on current facts.", false));
+    }
+  }
+  for (const decision of plan.decisions) {
+    if (decision.status === "proposed" && decision.evidence.length === 0) {
+      events.push(driftEvent(`DRIFT-${decision.id}-evidence`, "unvalidated_decision", decision.id, "Proposed decision has no evidence.", "Attach evidence or keep the decision out of the operational contract.", true));
+    }
+  }
+  return events;
+}
+
+function researchReady(plan: Plan): boolean {
+  return !plan.tasks.some((task) => task.research_required) || plan.research_packets.length > 0;
+}
+
+function check(id: string, title: string, status: ReadinessCheck["status"], weight: number, notes: string[]): ReadinessCheck {
+  return {
+    id,
+    title,
+    status,
+    weight,
+    score: status === "pass" || status === "not_applicable" ? 100 : status === "warn" ? 50 : 0,
+    notes: status === "pass" ? [] : notes,
+  };
+}
+
+function driftEvent(
+  id: string,
+  type: DriftEvent["type"],
+  location: string,
+  impact: string,
+  correction: string,
+  requiresHumanValidation: boolean,
+): DriftEvent {
+  return {
+    id,
+    type,
+    location,
+    impact,
+    correction,
+    requires_human_validation: requiresHumanValidation,
   };
 }

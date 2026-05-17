@@ -1,11 +1,18 @@
 import { type ZodError, type ZodTypeAny } from "zod";
 import {
+  AdapterSchema,
   AnalysisReportSchema,
+  DecisionSchema,
+  DocsIndexSchema,
+  DriftReportSchema,
   HandoffPacketSchema,
   ManifestSchema,
+  PatchSuggestionSchema,
   PhaseSchema,
   PlanSchema,
+  ReadinessReportSchema,
   ResearchPacketSchema,
+  RepositoryInspectionSchema,
   SubplanSchema,
   SubtaskSchema,
   TaskSchema,
@@ -24,7 +31,14 @@ export type ValidationTarget =
   | "research"
   | "test"
   | "analysis"
-  | "handoff";
+  | "handoff"
+  | "decision"
+  | "adapter"
+  | "repository"
+  | "readiness"
+  | "drift"
+  | "patch"
+  | "docs";
 
 export interface ValidationIssue {
   path: string;
@@ -52,6 +66,13 @@ const schemaByTarget: Record<ValidationTarget, ZodTypeAny> = {
   test: TestSchema,
   analysis: AnalysisReportSchema,
   handoff: HandoffPacketSchema,
+  decision: DecisionSchema,
+  adapter: AdapterSchema,
+  repository: RepositoryInspectionSchema,
+  readiness: ReadinessReportSchema,
+  drift: DriftReportSchema,
+  patch: PatchSuggestionSchema,
+  docs: DocsIndexSchema,
 };
 
 export function validateArtifact(target: ValidationTarget, data: unknown): ValidationResult {
@@ -104,6 +125,10 @@ function collectWarnings(target: ValidationTarget, data: any): ValidationIssue[]
     warnings.push({ path: "acceptance_criteria", message: "Task has no observable acceptance criteria." });
   }
 
+  if (target === "task" && data.status === "done" && data.verification.length === 0 && data.tests.length === 0) {
+    warnings.push({ path: "verification", message: "Done task should include verification notes or linked tests." });
+  }
+
   if (target === "phase" && (!data.entry_condition || !data.exit_condition)) {
     warnings.push({ path: "entry_condition/exit_condition", message: "Phase should have both entry and exit conditions." });
   }
@@ -122,6 +147,26 @@ function collectWarnings(target: ValidationTarget, data: any): ValidationIssue[]
 
   if (target === "handoff" && data.next_steps.length === 0) {
     warnings.push({ path: "next_steps", message: "Handoff should include next steps." });
+  }
+
+  if (target === "decision" && data.status === "accepted" && data.evidence.length === 0) {
+    warnings.push({ path: "evidence", message: "Accepted decision should include evidence." });
+  }
+
+  if (target === "adapter" && !data.scope_boundary) {
+    warnings.push({ path: "scope_boundary", message: "Adapter should declare its scope boundary." });
+  }
+
+  if (target === "readiness" && data.score < 85) {
+    warnings.push({ path: "score", message: "Readiness score is below ready threshold." });
+  }
+
+  if (target === "drift" && data.drift_score > 0) {
+    warnings.push({ path: "drift_score", message: "Drift report contains events that need review." });
+  }
+
+  if (target === "patch" && data.suggested_diff && !data.safety_notes.length) {
+    warnings.push({ path: "safety_notes", message: "Patch suggestion should explain safety boundaries." });
   }
 
   return warnings;
@@ -147,6 +192,14 @@ function collectRecommendations(target: ValidationTarget, data: any): string[] {
     recommendations.push("Confirm nested subplans are necessary and bounded by human validation.");
   }
 
+  if (target === "readiness" && data.blockers.length > 0) {
+    recommendations.push("Resolve blockers before treating the plan as executable.");
+  }
+
+  if (target === "drift" && data.events.length > 0) {
+    recommendations.push("Review drift events and record corrections as decisions or task changes.");
+  }
+
   return recommendations;
 }
 
@@ -156,6 +209,12 @@ function needsHumanValidation(target: ValidationTarget, data: any): boolean {
   }
   if (target === "subplan") {
     return data.max_depth > 1;
+  }
+  if (target === "decision") {
+    return data.status === "proposed" && data.risks.length > 0;
+  }
+  if (target === "drift") {
+    return data.events.some((event: { requires_human_validation: boolean }) => event.requires_human_validation);
   }
   return false;
 }

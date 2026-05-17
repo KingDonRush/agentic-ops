@@ -4,10 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  createAdapter,
+  createDecision,
+  createDriftReport,
   createSubplan,
   createTest,
   createPlan,
+  createReadinessReport,
   createResearchPacket,
+  inspectRepository,
   inspectWorkspace,
   validateArtifact,
 } from "../dist/index.js";
@@ -64,4 +69,45 @@ test("inspects existing agentic files and recommends overlay", () => {
 
   assert.equal(inspection.recommended_mode, "overlay");
   assert.deepEqual(inspection.agentic_files, ["AGENTS.md"]);
+});
+
+test("creates valid V2 decision, adapter, readiness, and drift objects", () => {
+  const plan = createPlan({
+    objective: "Create an operational plan",
+    preset: "research_strategy_conceptual",
+    scope: ["planning contract"],
+    outOfScope: ["runtime execution"],
+  });
+  const decision = createDecision({
+    id: "DECISION-001",
+    title: "Use non-destructive overlays",
+    status: "accepted",
+    evidence: ["Existing AGENTS.md must not be overwritten."],
+  });
+  const adapter = createAdapter({
+    id: "ADAPTER-001",
+    title: "Repository metadata adapter",
+    type: "repository",
+    scopeBoundary: "Read-only repository inspection.",
+  });
+  const readiness = createReadinessReport({ id: "READINESS-001", plan });
+  const drift = createDriftReport({ id: "DRIFT-001", plan });
+
+  assert.equal(validateArtifact("decision", decision).valid, true);
+  assert.equal(validateArtifact("adapter", adapter).valid, true);
+  assert.equal(validateArtifact("readiness", readiness).valid, true);
+  assert.equal(validateArtifact("drift", drift).valid, true);
+  assert.equal(readiness.score > 0, true);
+});
+
+test("inspects repository metadata without requiring CI", () => {
+  const root = mkdtempSync(join(tmpdir(), "aops-repo-"));
+  writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { verify: "echo ok" } }));
+
+  const inspection = inspectRepository(root);
+
+  assert.equal(inspection.root, root);
+  assert.equal(inspection.is_git_repo, false);
+  assert.deepEqual(inspection.package_scripts, ["verify"]);
+  assert.deepEqual(inspection.ci_detected, ["package_scripts"]);
 });

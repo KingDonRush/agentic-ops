@@ -150,3 +150,106 @@ test("V1 commands create phases, tasks, subplans, tests, analysis, handoff, snap
   assert.equal(snapshot.snapshot.files.length > 0, true);
   assert.match(exported, /# PLAN-001/);
 });
+
+test("V2 commands create maturity artifacts without changing project files", () => {
+  const root = mkdtempSync(join(tmpdir(), "aops-cli-v2-"));
+  const readmePath = join(root, "README.md");
+  writeFileSync(readmePath, "# Demo Project\n");
+  execFileSync(process.execPath, [
+    cli,
+    "--cwd",
+    root,
+    "plan",
+    "create",
+    "--preset",
+    "research_strategy_conceptual",
+    "--objective",
+    "Plan a reusable agentic workflow",
+    "--scope",
+    "planning",
+    "--out-of-scope",
+    "runtime automation",
+  ], { encoding: "utf8" });
+  execFileSync(process.execPath, [
+    cli,
+    "--cwd",
+    root,
+    "task",
+    "create",
+    "--title",
+    "Implement V2",
+    "--acceptance-criteria",
+    "Readiness and drift commands work",
+  ], { encoding: "utf8" });
+  execFileSync(process.execPath, [cli, "--cwd", root, "repo", "inspect", "--write"], { encoding: "utf8" });
+  execFileSync(process.execPath, [cli, "--cwd", root, "ci", "inspect"], { encoding: "utf8" });
+  execFileSync(process.execPath, [
+    cli,
+    "--cwd",
+    root,
+    "decision",
+    "record",
+    "--title",
+    "Keep V2 non-destructive",
+    "--status",
+    "accepted",
+    "--evidence",
+    "README.md remains unchanged",
+  ], { encoding: "utf8" });
+  execFileSync(process.execPath, [
+    cli,
+    "--cwd",
+    root,
+    "adapter",
+    "create",
+    "--title",
+    "Repository adapter",
+    "--type",
+    "repository",
+    "--scope-boundary",
+    "Read-only repository metadata",
+  ], { encoding: "utf8" });
+  execFileSync(process.execPath, [cli, "--cwd", root, "task", "start", "--task-id", "TASK-002"], { encoding: "utf8" });
+  execFileSync(process.execPath, [
+    cli,
+    "--cwd",
+    root,
+    "task",
+    "complete",
+    "--task-id",
+    "TASK-002",
+    "--verification",
+    "V2 command smoke passed",
+  ], { encoding: "utf8" });
+  execFileSync(process.execPath, [cli, "--cwd", root, "readiness", "score"], { encoding: "utf8" });
+  execFileSync(process.execPath, [cli, "--cwd", root, "drift", "check"], { encoding: "utf8" });
+  execFileSync(process.execPath, [cli, "--cwd", root, "docs", "index"], { encoding: "utf8" });
+  execFileSync(process.execPath, [
+    cli,
+    "--cwd",
+    root,
+    "patch",
+    "suggest",
+    "--title",
+    "Optional AGENTS note",
+    "--target-file",
+    "AGENTS.md",
+    "--type",
+    "agents_instruction",
+  ], { encoding: "utf8" });
+
+  const plan = JSON.parse(readFileSync(join(root, ".agentic-ops", "plan.json"), "utf8"));
+  const task = JSON.parse(readFileSync(join(root, ".agentic-ops", "tasks", "TASK-002.json"), "utf8"));
+
+  assert.equal(readFileSync(readmePath, "utf8"), "# Demo Project\n");
+  assert.equal(existsSync(join(root, ".agentic-ops", "repository-inspection.json")), true);
+  assert.equal(existsSync(join(root, ".agentic-ops", "docs", "docs-index.json")), true);
+  assert.equal(existsSync(join(root, ".agentic-ops", "decisions", "DECISION-001.json")), true);
+  assert.equal(existsSync(join(root, ".agentic-ops", "adapters", "ADAPTER-001.json")), true);
+  assert.equal(existsSync(join(root, ".agentic-ops", "patches", "PATCH-001.json")), true);
+  assert.equal(plan.decisions.length, 1);
+  assert.equal(plan.readiness_reports.length, 1);
+  assert.equal(plan.drift_reports.length, 1);
+  assert.equal(task.status, "done");
+  assert.deepEqual(task.verification, ["V2 command smoke passed"]);
+});
