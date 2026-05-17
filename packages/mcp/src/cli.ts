@@ -11,6 +11,16 @@ const allowedPrefixes = [
   ["validate"],
   ["plan", "create"],
   ["research", "brief"],
+  ["phase", "create"],
+  ["task", "create"],
+  ["subtask", "create"],
+  ["subplan", "create"],
+  ["test", "create"],
+  ["analyze"],
+  ["handoff", "create"],
+  ["snapshot", "create"],
+  ["diff"],
+  ["export"],
 ];
 
 const blockedArgs = new Set(["--force"]);

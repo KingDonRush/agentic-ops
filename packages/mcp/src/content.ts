@@ -10,7 +10,7 @@ export const resources: Record<string, { name: string; text: string }> = {
       "",
       "Primary mantra: Como isso vai continuar funcionando depois que eu parar de explicar?",
       "",
-      "V0 flow: inspect workspace, suggest non-destructive init, choose preset, create briefing, create plan, create research packets, validate, hand off.",
+      "V1 flow: inspect workspace, suggest non-destructive init, choose preset, create briefing, create plan, create phases/tasks/subtasks/subplans/tests, create research packets, validate, analyze, snapshot/export, hand off.",
     ].join("\n"),
   },
   "agentic-ops://non-destructive-policy": {
@@ -45,12 +45,22 @@ export const resources: Record<string, { name: string; text: string }> = {
   "agentic-ops://cli-command-reference": {
     name: "CLI Command Reference",
     text: [
-      "V0 allowlist:",
+      "V1 allowlist:",
       "- aops inspect",
       "- aops init --non-destructive",
       "- aops validate",
       "- aops plan create",
       "- aops research brief",
+      "- aops phase create",
+      "- aops task create",
+      "- aops subtask create",
+      "- aops subplan create",
+      "- aops test create",
+      "- aops analyze",
+      "- aops handoff create",
+      "- aops snapshot create",
+      "- aops diff",
+      "- aops export",
       "",
       "The MCP must not pass --force unless a user explicitly approves it outside the tool.",
     ].join("\n"),
@@ -93,6 +103,21 @@ export const prompts: Record<string, { description: string; text: string }> = {
     text: [
       "Create a handoff that preserves method and state.",
       "Include current state, objective, preset, decisions made, decisions pending, plan structure, completed/pending tasks, risks, research packets, validations, tests, next steps, what not to reopen, first CLI command, and first MCP prompt.",
+    ].join("\n"),
+  },
+  create_subplan: {
+    description: "Create a bounded Matrioshka subplan.",
+    text: [
+      "Create a subplan only when a task is too large, too uncertain, or needs its own plan.",
+      "It must include parent task, purpose, scope boundary, entry condition, exit condition, allowed expansion, forbidden expansion, completion criteria, and handoff notes.",
+      "Do not create a subplan without a stop condition.",
+    ].join("\n"),
+  },
+  create_test: {
+    description: "Create a first-class test or validation object.",
+    text: [
+      "Create a test with type, target, objective, preconditions, steps, expected result, pass criteria, evidence required, severity, dependencies, and subtests if needed.",
+      "Tests can target plan, phase, task, subtask, subplan, integration, UI, API, research, or handoff.",
     ].join("\n"),
   },
 };

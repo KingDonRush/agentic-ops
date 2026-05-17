@@ -59,6 +59,30 @@ export const ResearchPacketSchema = z.object({
   validation_required: z.array(z.string()).default([]),
 });
 
+export const SubtaskSchema = z.object({
+  id: z.string(),
+  title: z.string().min(1),
+  description: z.string().default(""),
+  objective: z.string().default(""),
+  status: z.enum(["pending", "in_progress", "blocked", "done", "deferred"]).default("pending"),
+  depends_on: z.array(z.string()).default([]),
+  inputs_required: z.array(z.string()).default([]),
+  expected_output: z.string().default(""),
+  acceptance_criteria: z.array(z.string()).default([]),
+  verification: z.array(z.string()).default([]),
+  risks: z.array(z.string()).default([]),
+  promote_to_subplan_if: z.array(z.string()).default([]),
+});
+
+export const SubtestSchema = z.object({
+  id: z.string(),
+  objective: z.string().min(1),
+  steps: z.array(z.string()).default([]),
+  expected_result: z.string().default(""),
+  pass_criteria: z.array(z.string()).default([]),
+  status: z.enum(["pending", "passed", "failed", "blocked", "skipped"]).default("pending"),
+});
+
 export const TestSchema = z.object({
   id: z.string(),
   type: z.enum([
@@ -83,7 +107,25 @@ export const TestSchema = z.object({
   status: z.enum(["pending", "passed", "failed", "blocked", "skipped"]).default("pending"),
   severity: z.enum(["critical", "high", "medium", "low"]).default("medium"),
   depends_on: z.array(z.string()).default([]),
-  subtests: z.array(z.string()).default([]),
+  subtests: z.array(SubtestSchema).default([]),
+});
+
+export const SubplanSchema = z.object({
+  id: z.string(),
+  parent_task_id: z.string().min(1),
+  title: z.string().min(1),
+  purpose: z.string().min(1),
+  scope_boundary: z.string().min(1),
+  entry_condition: z.string().min(1),
+  exit_condition: z.string().min(1),
+  max_depth: z.number().int().min(0).max(2).default(1),
+  allowed_expansion: z.array(z.string()).default([]),
+  forbidden_expansion: z.array(z.string()).default([]),
+  budgets: BudgetSchema.default({}),
+  tasks: z.array(z.unknown()).default([]),
+  tests: z.array(TestSchema).default([]),
+  completion_criteria: z.array(z.string()).default([]),
+  handoff_notes: z.string().default(""),
 });
 
 export const TaskSchema = z.object({
@@ -105,8 +147,15 @@ export const TaskSchema = z.object({
   research_required: z.boolean().default(false),
   tests: z.array(TestSchema).default([]),
   requires_human_validation: z.boolean().default(false),
-  subtasks: z.array(z.unknown()).default([]),
-  subplans: z.array(z.unknown()).default([]),
+  subtasks: z.array(SubtaskSchema).default([]),
+  subplans: z.array(z.union([
+    z.string(),
+    z.object({
+      id: z.string(),
+      path: z.string().optional(),
+      title: z.string().optional(),
+    }),
+  ])).default([]),
 });
 
 export const PhaseSchema = z.object({
@@ -139,6 +188,35 @@ export const PlanSchema = z.object({
   handoff: z.record(z.unknown()).default({}),
 });
 
+export const AnalysisReportSchema = z.object({
+  id: z.string(),
+  type: z.enum([
+    "complexity",
+    "fit",
+    "technical",
+    "execution",
+    "scope",
+    "test",
+    "handoff_readiness",
+  ]),
+  target: z.string().default("plan"),
+  summary: z.string().default(""),
+  findings: z.array(z.string()).default([]),
+  recommendations: z.array(z.string()).default([]),
+  related_research_packets: z.array(z.string()).default([]),
+  status: z.enum(["draft", "ready", "requires_validation"]).default("draft"),
+  created_at: z.string().default(() => new Date().toISOString()),
+});
+
+export const SnapshotSchema = z.object({
+  id: z.string(),
+  created_at: z.string(),
+  files: z.array(z.object({
+    path: z.string(),
+    sha256: z.string(),
+  })),
+});
+
 export const HandoffPacketSchema = z.object({
   id: z.string(),
   current_state: z.string().default(""),
@@ -165,4 +243,10 @@ export type WorkspaceInspection = z.infer<typeof WorkspaceInspectionSchema>;
 export type ResearchPacket = z.infer<typeof ResearchPacketSchema>;
 export type Plan = z.infer<typeof PlanSchema>;
 export type Task = z.infer<typeof TaskSchema>;
+export type Phase = z.infer<typeof PhaseSchema>;
+export type Subtask = z.infer<typeof SubtaskSchema>;
+export type Subplan = z.infer<typeof SubplanSchema>;
+export type Test = z.infer<typeof TestSchema>;
+export type AnalysisReport = z.infer<typeof AnalysisReportSchema>;
+export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type HandoffPacket = z.infer<typeof HandoffPacketSchema>;

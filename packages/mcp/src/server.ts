@@ -16,7 +16,7 @@ import { runCli } from "./cli.js";
 const server = new Server(
   {
     name: "agentic-ops",
-    version: "0.1.0",
+    version: "0.2.0",
   },
   {
     capabilities: {
@@ -138,6 +138,50 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "validate_phase",
+      description: "Validate a phase JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["phase"],
+        properties: {
+          phase: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "validate_task",
+      description: "Validate a task JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["task"],
+        properties: {
+          task: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "validate_subplan",
+      description: "Validate a subplan JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["subplan"],
+        properties: {
+          subplan: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "validate_test",
+      description: "Validate a test JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["test"],
+        properties: {
+          test: { type: "object" },
+        },
+      },
+    },
+    {
       name: "validate_research_packet",
       description: "Validate a research packet JSON object.",
       inputSchema: {
@@ -145,6 +189,38 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["research_packet"],
         properties: {
           research_packet: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "validate_handoff",
+      description: "Validate a handoff packet JSON object.",
+      inputSchema: {
+        type: "object",
+        required: ["handoff"],
+        properties: {
+          handoff: { type: "object" },
+        },
+      },
+    },
+    {
+      name: "create_snapshot",
+      description: "Create an operational snapshot through the allowlisted CLI.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cwd: { type: "string" },
+        },
+      },
+    },
+    {
+      name: "export_operational_plan",
+      description: "Export the operational plan through the allowlisted CLI.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cwd: { type: "string" },
+          format: { type: "string" },
         },
       },
     },
@@ -185,8 +261,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "validate_plan": {
       return textResponse(validateArtifact("plan", args.plan));
     }
+    case "validate_phase": {
+      return textResponse(validateArtifact("phase", args.phase));
+    }
+    case "validate_task": {
+      return textResponse(validateArtifact("task", args.task));
+    }
+    case "validate_subplan": {
+      return textResponse(validateArtifact("subplan", args.subplan));
+    }
+    case "validate_test": {
+      return textResponse(validateArtifact("test", args.test));
+    }
     case "validate_research_packet": {
       return textResponse(validateArtifact("research", args.research_packet));
+    }
+    case "validate_handoff": {
+      return textResponse(validateArtifact("handoff", args.handoff));
+    }
+    case "create_snapshot": {
+      const cwd = stringArg(args.cwd);
+      return textResponse(await runCli(["snapshot", "create"], cwd));
+    }
+    case "export_operational_plan": {
+      const cwd = stringArg(args.cwd);
+      const format = stringArg(args.format) ?? "json";
+      return textResponse(await runCli(["export", "--format", format], cwd));
     }
     default:
       throw new Error(`Unknown tool: ${request.params.name}`);
