@@ -1,0 +1,17 @@
+{
+  "name": "@agentic-ops/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "aops": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agentic-ops/core": "0.1.0",
+    "commander": "^12.1.0"
+  }
+}

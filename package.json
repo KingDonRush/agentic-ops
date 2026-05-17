@@ -1,0 +1,30 @@
+{
+  "name": "agentic-ops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLI-first operational planning system with MCP interface for drift-resistant AI work.",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @agentic-ops/core && npm run build -w @agentic-ops/cli && npm run build -w @agentic-ops/mcp",
+    "clean": "rm -rf packages/*/dist",
+    "test": "node --test \"packages/*/test/**/*.test.js\"",
+    "verify": "npm run build && npm test",
+    "aops": "node packages/cli/dist/index.js",
+    "mcp": "node packages/mcp/dist/server.js"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "planning",
+    "mcp",
+    "cli"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.3"
+  }
+}
