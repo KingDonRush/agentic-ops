@@ -1,57 +1,42 @@
 # Agentic Ops
 
-A TypeScript CLI and MCP server for turning agent-assisted work into inspectable
-plans, tasks, decisions, validation records and handoffs. It writes a non-destructive
-`.agentic-ops/` overlay alongside an existing project.
+A TypeScript CLI and MCP server for maintaining inspectable plans, tasks, decisions,
+validation records and handoffs alongside an existing project. It stores its records
+in a `.agentic-ops/` overlay, keeping operational state separate from application source.
 
-**Independent developer-tooling prototype.** It structures work for agents; it does
-not train models or autonomously operate external services.
+## Workflow
 
-## What the implementation demonstrates
-
-- Shared [schemas and validation](packages/core/src) for operational artifacts.
-- A deterministic [CLI](packages/cli/src) to inspect, plan and validate work.
-- An [MCP stdio interface](packages/mcp/src) exposing those contracts to agents.
-- Readiness, drift, snapshots and evidence-bearing handoffs, with patch proposals
-  kept separate from applying changes to source.
-
-## Try it
+Inspect a workspace, initialize its overlay, create a plan and record the evidence
+needed to complete each task. Snapshots make changes to those records comparable;
+readiness and drift checks identify missing or inconsistent planning artifacts.
+Handoffs preserve the resulting decisions and outstanding work for another session.
 
 ```bash
 npm ci
 npm run verify
-npm run aops -- inspect --cwd .
-npm run aops -- init --cwd . --non-destructive
-npm run mcp
+npm run aops -- inspect --cwd /path/to/project
+npm run aops -- init --cwd /path/to/project --non-destructive
+npm run aops -- plan create --cwd /path/to/project --preset research_strategy_conceptual --objective "Define project direction"
 ```
 
-`init` creates the local overlay. Inspect the complete
-[CLI/MCP reference](docs/cli-reference.md) for plan and handoff commands.
+The [CLI/MCP reference](docs/cli-reference.md) covers task lifecycles, research
+packets, decisions, snapshots, validation and export. `npm run mcp` starts the
+stdio interface for an MCP client.
 
-## Validation and limits
+## Architecture
 
-On 2026-09-17, `npm run verify` passed the build and all 10 tests on revision
-`6846f1cbbfb756166eb3060953bfff9ff4e0762c` using Node 22.21.1.
-Adapters are declarative contracts, not evidence of production integrations.
-Operational scores describe artifact readiness; they do not measure model quality
-or guarantee project correctness. Review dependencies before deployment.
+- [core](packages/core/src): schemas, presets and shared validation contracts.
+- [cli](packages/cli/src): deterministic commands over the overlay.
+- [mcp](packages/mcp/src): resources, prompts and tools over the same contracts.
 
-## Development method and authorship
+Patch proposals remain separate from applying source changes. Adapter records
+are declarative integration contracts; creating one does not connect an external
+service. Readiness scores measure artifact completeness, not software correctness.
 
-This is an independent project, not evidence of an employer or a client engagement.
-The source was produced primarily or entirely by AI coding agents under Guilherme
-Manoel da Silva's direction. His contribution includes product intent, requirements,
-constraints, decomposition, product and architectural decisions through the agent
-interface, iteration, validation and documentation. The repository demonstrates
-the resulting system and process; it does not imply that he manually wrote every
-component or can reproduce it unaided from memory.
+## Verification
 
-## Em português
-
-CLI e servidor MCP para estruturar planos, tarefas, decisões, validações e handoffs
-em projetos dirigidos por agentes. O código permite verificar contratos e estado;
-o projeto não pressupõe treinamento de modelos nem execução externa autônoma.
-
-## License
+`npm run verify` builds all three packages and runs the Node test suite.
+The current suite contains 10 tests. Tests exercise operational records and
+command behavior; they do not evaluate a language model or validate external adapters.
 
 [MIT](LICENSE).
